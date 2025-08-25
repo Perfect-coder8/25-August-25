@@ -1,147 +1,317 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>K-Means Clustering Demo</title>
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #elbow { width: 400px; height: 300px; }
-    #cluster { width: 600px; height: 500px; }
-  </style>
+    <meta charset="UTF-8">
+    <title>K-means Clustering with Elbow Method</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 20px;
+            background: linear-gradient(120deg, #f0f4fc 0%, #e0e7ff 100%);
+        }
+        h2 {
+            color: #3b3b6d;
+            text-shadow: 1px 1px 0 #fff;
+        }
+        #controls {
+            margin-bottom: 20px;
+        }
+        #plot {
+            width: 800px;
+            height: 600px;
+            border-radius: 12px;
+            box-shadow: 0 2px 16px #b3b3e6;
+            background: #fff;
+        }
+        #elbow {
+            width: 600px;
+            height: 400px;
+            margin-top: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 16px #b3b3e6;
+            background: #fff;
+        }
+        .legend {
+            margin-top: 10px;
+            font-size: 1.1em;
+        }
+        .legend span {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            margin-right: 6px;
+            border-radius: 4px;
+            vertical-align: middle;
+        }
+        button, input[type="number"] {
+            font-size: 1em;
+            margin-right: 10px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #b3b3e6;
+            background: #f6f8ff;
+        }
+        button:hover {
+            background: #e0e7ff;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-  <h2>K-Means Clustering (2D) with Elbow Method</h2>
-  <div>
-    <button onclick="generateData()">Generate Random Data</button>
-    <label>Points: <input type="number" id="numPoints" value="100" min="10" max="500"></label>
-  </div>
-  <div id="elbow"></div>
-  <div>
-    <label>Clusters (k): <input type="number" id="numClusters" value="3" min="1" max="10" onchange="runKMeans()"></label>
-  </div>
-  <div id="cluster"></div>
-  <script>
-    // Generate random 2D data
-    let points = [];
-    function generateData() {
-      const n = parseInt(document.getElementById('numPoints').value);
-      points = [];
-      for (let i = 0; i < n; i++) {
-        points.push([
-          Math.random() * 10 + (Math.random() > 0.5 ? 10 : 0),
-          Math.random() * 10 + (Math.random() > 0.5 ? 10 : 0)
-        ]);
-      }
-      elbowMethod();
-      runKMeans();
-    }
+    <h2>✨ K-means Clustering (2D) with Elbow Method ✨</h2>
+    <div id="controls">
+        <button onclick="regenerate()">🔄 Regenerate Data</button>
+        <label>Points: <input type="number" id="numPoints" value="300" min="50" max="1000"></label>
+        <label>Clusters (k): <input type="number" id="numClusters" value="4" min="1" max="10" onchange="updateK()"></label>
+    </div>
+    <div id="elbow"></div>
+    <div id="plot"></div>
+    <div class="legend" id="clusterLegend"></div>
+    <script>
+const palette = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+    "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+    "#bcbd22", "#17becf"
+];
 
-    // K-means clustering
-    function kMeans(data, k, maxIter=100) {
-      // Randomly initialize centroids
-      let centroids = [];
-      for (let i = 0; i < k; i++) {
-        centroids.push(data[Math.floor(Math.random() * data.length)]);
-      }
-      let assignments = new Array(data.length).fill(0);
-      for (let iter = 0; iter < maxIter; iter++) {
-        // Assign clusters
-        for (let i = 0; i < data.length; i++) {
-          let minDist = Infinity, idx = 0;
-          for (let j = 0; j < k; j++) {
-            let dist = Math.pow(data[i][0] - centroids[j][0], 2) + Math.pow(data[i][1] - centroids[j][1], 2);
-            if (dist < minDist) { minDist = dist; idx = j; }
-          }
-          assignments[i] = idx;
+function generateData(n, centers) {
+    let data = [];
+    let rng = () => Math.random();
+    for (let i = 0; i < centers.length; i++) {
+        let [cx, cy] = centers[i];
+        for (let j = 0; j < n / centers.length; j++) {
+            let angle = rng() * 2 * Math.PI;
+            let radius = rng() * 1.5 + 0.5;
+            let x = cx + Math.cos(angle) * radius + rng() * 0.5;
+            let y = cy + Math.sin(angle) * radius + rng() * 0.5;
+            data.push([x, y]);
         }
-        // Update centroids
-        let sums = Array.from({length: k}, () => [0,0,0]);
+    }
+    return data;
+}
+
+function kmeans(data, k, maxIter=100) {
+    let centers = [];
+    let used = new Set();
+    while (centers.length < k) {
+        let idx = Math.floor(Math.random() * data.length);
+        if (!used.has(idx)) {
+            centers.push([...data[idx]]);
+            used.add(idx);
+        }
+    }
+    let labels = new Array(data.length).fill(0);
+    for (let iter = 0; iter < maxIter; iter++) {
         for (let i = 0; i < data.length; i++) {
-          sums[assignments[i]][0] += data[i][0];
-          sums[assignments[i]][1] += data[i][1];
-          sums[assignments[i]][2] += 1;
+            let minDist = Infinity, minIdx = 0;
+            for (let j = 0; j < k; j++) {
+                let dx = data[i][0] - centers[j][0];
+                let dy = data[i][1] - centers[j][1];
+                let dist = dx*dx + dy*dy;
+                if (dist < minDist) {
+                    minDist = dist;
+                    minIdx = j;
+                }
+            }
+            labels[i] = minIdx;
+        }
+        let newCenters = Array(k).fill(0).map(_ => [0,0]);
+        let counts = Array(k).fill(0);
+        for (let i = 0; i < data.length; i++) {
+            let lbl = labels[i];
+            newCenters[lbl][0] += data[i][0];
+            newCenters[lbl][1] += data[i][1];
+            counts[lbl]++;
         }
         for (let j = 0; j < k; j++) {
-          if (sums[j][2] > 0) {
-            centroids[j] = [sums[j][0]/sums[j][2], sums[j][1]/sums[j][2]];
-          }
+            if (counts[j] > 0) {
+                newCenters[j][0] /= counts[j];
+                newCenters[j][1] /= counts[j];
+            } else {
+                newCenters[j] = [...data[Math.floor(Math.random()*data.length)]];
+            }
         }
-      }
-      // Calculate inertia
-      let inertia = 0;
-      let pointInertia = [];
-      for (let i = 0; i < data.length; i++) {
-        let dist = Math.pow(data[i][0] - centroids[assignments[i]][0], 2) + Math.pow(data[i][1] - centroids[assignments[i]][1], 2);
+        let converged = true;
+        for (let j = 0; j < k; j++) {
+            if (Math.abs(newCenters[j][0] - centers[j][0]) > 1e-4 ||
+                Math.abs(newCenters[j][1] - centers[j][1]) > 1e-4) {
+                converged = false;
+                break;
+            }
+        }
+        centers = newCenters;
+        if (converged) break;
+    }
+    let inertia = 0;
+    let pointInertia = [];
+    for (let i = 0; i < data.length; i++) {
+        let c = centers[labels[i]];
+        let dx = data[i][0] - c[0];
+        let dy = data[i][1] - c[1];
+        let dist = dx*dx + dy*dy;
         inertia += dist;
         pointInertia[i] = dist;
-      }
-      return {assignments, centroids, inertia, pointInertia};
     }
+    return {labels, centers, inertia, pointInertia};
+}
 
-    // Elbow method
-    function elbowMethod() {
-      let inertias = [];
-      for (let k = 1; k <= 10; k++) {
-        let result = kMeans(points, k);
+// --- Interactive controls ---
+let centers = [[2,2],[6,6],[2,7],[7,2]];
+let data = generateData(300, centers);
+let kMax = 10;
+let kmeansResults = [];
+let inertias = [];
+let currentK = 4;
+
+function computeAllKMeans() {
+    kmeansResults = [];
+    inertias = [];
+    for (let k = 1; k <= kMax; k++) {
+        let result = kmeans(data, k);
+        kmeansResults.push(result);
         inertias.push(result.inertia);
-      }
-      Plotly.newPlot('elbow', [{
-        x: Array.from({length: 10}, (_, i) => i+1),
+    }
+}
+
+function plotElbow() {
+    Plotly.newPlot('elbow', [{
+        x: Array.from({length: kMax}, (_,i) => i+1),
         y: inertias,
-        type: 'scatter',
         mode: 'lines+markers',
-        marker: {color: 'blue'}
-      }], {
-        title: 'Elbow Method: Inertia vs k',
-        xaxis: {title: 'Number of clusters (k)'},
-        yaxis: {title: 'Inertia'}
-      });
-    }
+        marker: {color: '#3b3b6d', size: 10, symbol: 'diamond'},
+        line: {shape: 'spline', color: '#3b3b6d', width: 3},
+        name: 'Inertia'
+    }], {
+        title: 'Elbow Method: Inertia vs Number of Clusters',
+        xaxis: {title: 'Number of clusters (k)', tickfont: {size: 14}},
+        yaxis: {title: 'Inertia', tickfont: {size: 14}},
+        plot_bgcolor: '#f6f8ff',
+        paper_bgcolor: '#f6f8ff'
+    });
+}
 
-    // Plot clusters
-    function runKMeans() {
-      const k = parseInt(document.getElementById('numClusters').value);
-      if (!points.length) generateData();
-      const result = kMeans(points, k);
-      let clusters = Array.from({length: k}, () => []);
-      for (let i = 0; i < points.length; i++) {
-        clusters[result.assignments[i]].push({
-          x: points[i][0],
-          y: points[i][1],
-          inertia: result.pointInertia[i],
-          cluster: result.assignments[i]
+function plotClusters(k) {
+    let result = kmeansResults[k-1];
+    let clusterTraces = [];
+    let legendHtml = '';
+    for (let i = 0; i < k; i++) {
+        let clusterPoints = data.filter((_, idx) => result.labels[idx] === i);
+        clusterTraces.push({
+            x: clusterPoints.map(p => p[0]),
+            y: clusterPoints.map(p => p[1]),
+            mode: 'markers',
+            type: 'scatter',
+            name: `Cluster ${i+1}`,
+            marker: {
+                size: 10,
+                color: palette[i % palette.length],
+                line: {width: 1, color: '#fff'}
+            },
+            text: clusterPoints.map((p, idx) => {
+                let inertia = result.pointInertia[data.indexOf(p)];
+                let centroid = result.centers[i];
+                return `Cluster: ${i+1}<br>Inertia: ${inertia.toFixed(2)}<br>Centroid: (${centroid[0].toFixed(2)}, ${centroid[1].toFixed(2)})`;
+            }),
+            hoverinfo: 'text'
         });
-      }
-      let traces = clusters.map((cluster, idx) => ({
-        x: cluster.map(p => p.x),
-        y: cluster.map(p => p.y),
-        text: cluster.map(p => `Inertia: ${p.inertia.toFixed(2)}<br>Cluster: ${p.cluster}`),
-        mode: 'markers',
-        type: 'scatter',
-        name: `Cluster ${idx}`,
-        marker: {size: 10}
-      }));
-      // Centroids
-      traces.push({
-        x: result.centroids.map(c => c[0]),
-        y: result.centroids.map(c => c[1]),
-        mode: 'markers',
-        type: 'scatter',
-        name: 'Centroids',
-        marker: {size: 16, color: 'black', symbol: 'x'},
-        text: result.centroids.map((c, i) => `Centroid ${i}`)
-      });
-      Plotly.newPlot('cluster', traces, {
-        title: `K-Means Clusters (k=${k})<br>Total Inertia: ${result.inertia.toFixed(2)}`,
-        hovermode: 'closest',
-        xaxis: {title: 'X'},
-        yaxis: {title: 'Y'}
-      });
+        legendHtml += `<span style="background:${palette[i % palette.length]}"></span>Cluster ${i+1} `;
     }
+    clusterTraces.push({
+        x: result.centers.map(c => c[0]),
+        y: result.centers.map(c => c[1]),
+        mode: 'markers+text',
+        type: 'scatter',
+        name: 'Centers',
+        marker: {size: 22, color: '#ff3b3b', symbol: 'star-diamond', line: {width: 2, color: '#fff'}},
+        text: result.centers.map((c, i) => `C${i+1}`),
+        textposition: 'top center',
+        hoverinfo: 'text'
+    });
+    Plotly.newPlot('plot', clusterTraces, {
+        title: `K-means Clustering (k=${k}) <span style="font-size:0.7em;color:#888;">(Hover points for details)</span>`,
+        xaxis: {title: 'X', zeroline: false, gridcolor: '#e0e7ff'},
+        yaxis: {title: 'Y', zeroline: false, gridcolor: '#e0e7ff'},
+        plot_bgcolor: '#f6f8ff',
+        paper_bgcolor: '#f6f8ff',
+        legend: {orientation: 'h', y: -0.15}
+    });
+    document.getElementById('clusterLegend').innerHTML = legendHtml;
 
-    // Initial run
-    generateData();
-  </script>
+    // Show inertia annotation on centroid hover
+    const plotDiv = document.getElementById('plot');
+    if (plotDiv && plotDiv.on) {
+        plotDiv.on('plotly_hover', function(data){
+            let pt = data.points[0];
+            if (pt.curveNumber === k) { // center trace
+                Plotly.Fx.hover('plot', [{curveNumber: k, pointNumber: pt.pointNumber}], {
+                    hoverinfo: 'text',
+                    annotation: {
+                        text: `Total Inertia: ${result.inertia.toFixed(2)}`,
+                        x: pt.x,
+                        y: pt.y,
+                        showarrow: true,
+                        arrowhead: 7,
+                        ax: 0,
+                        ay: -40,
+                        bgcolor: "#fffbe6",
+                        bordercolor: "#ff3b3b",
+                        font: {color: "#3b3b6d", size: 16}
+                    }
+                });
+            }
+        });
+        plotDiv.on('plotly_unhover', function(){
+            Plotly.Fx.unhover('plot');
+        });
+    }
+}
+
+// Interactive elbow plot
+function setupElbowHover() {
+    const elbowDiv = document.getElementById('elbow');
+    if (elbowDiv && elbowDiv.on) {
+        elbowDiv.on('plotly_hover', function(data){
+            let pt = data.points[0];
+            let k = pt.x;
+            currentK = k;
+            plotClusters(k);
+        });
+        elbowDiv.on('plotly_unhover', function(){
+            plotClusters(currentK);
+        });
+    }
+}
+
+// Controls
+function regenerate() {
+    let n = parseInt(document.getElementById('numPoints').value);
+    let k = parseInt(document.getElementById('numClusters').value);
+    centers = [];
+    for (let i = 0; i < k; i++) {
+        centers.push([
+            2 + Math.random() * 6,
+            2 + Math.random() * 6
+        ]);
+    }
+    data = generateData(n, centers);
+    computeAllKMeans();
+    plotElbow();
+    plotClusters(k);
+    currentK = k;
+    setupElbowHover();
+}
+function updateK() {
+    let k = parseInt(document.getElementById('numClusters').value);
+    plotClusters(k);
+    currentK = k;
+}
+
+// Initial run
+computeAllKMeans();
+plotElbow();
+plotClusters(currentK);
+setupElbowHover();
+    </script>
 </body>
 </html>
