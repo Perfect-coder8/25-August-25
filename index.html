@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>K-Means Clustering Demo</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #elbow { width: 400px; height: 300px; }
+    #cluster { width: 600px; height: 500px; }
+  </style>
+</head>
+<body>
+  <h2>K-Means Clustering (2D) with Elbow Method</h2>
+  <div>
+    <button onclick="generateData()">Generate Random Data</button>
+    <label>Points: <input type="number" id="numPoints" value="100" min="10" max="500"></label>
+  </div>
+  <div id="elbow"></div>
+  <div>
+    <label>Clusters (k): <input type="number" id="numClusters" value="3" min="1" max="10" onchange="runKMeans()"></label>
+  </div>
+  <div id="cluster"></div>
+  <script>
+    // Generate random 2D data
+    let points = [];
+    function generateData() {
+      const n = parseInt(document.getElementById('numPoints').value);
+      points = [];
+      for (let i = 0; i < n; i++) {
+        points.push([
+          Math.random() * 10 + (Math.random() > 0.5 ? 10 : 0),
+          Math.random() * 10 + (Math.random() > 0.5 ? 10 : 0)
+        ]);
+      }
+      elbowMethod();
+      runKMeans();
+    }
+
+    // K-means clustering
+    function kMeans(data, k, maxIter=100) {
+      // Randomly initialize centroids
+      let centroids = [];
+      for (let i = 0; i < k; i++) {
+        centroids.push(data[Math.floor(Math.random() * data.length)]);
+      }
+      let assignments = new Array(data.length).fill(0);
+      for (let iter = 0; iter < maxIter; iter++) {
+        // Assign clusters
+        for (let i = 0; i < data.length; i++) {
+          let minDist = Infinity, idx = 0;
+          for (let j = 0; j < k; j++) {
+            let dist = Math.pow(data[i][0] - centroids[j][0], 2) + Math.pow(data[i][1] - centroids[j][1], 2);
+            if (dist < minDist) { minDist = dist; idx = j; }
+          }
+          assignments[i] = idx;
+        }
+        // Update centroids
+        let sums = Array.from({length: k}, () => [0,0,0]);
+        for (let i = 0; i < data.length; i++) {
+          sums[assignments[i]][0] += data[i][0];
+          sums[assignments[i]][1] += data[i][1];
+          sums[assignments[i]][2] += 1;
+        }
+        for (let j = 0; j < k; j++) {
+          if (sums[j][2] > 0) {
+            centroids[j] = [sums[j][0]/sums[j][2], sums[j][1]/sums[j][2]];
+          }
+        }
+      }
+      // Calculate inertia
+      let inertia = 0;
+      let pointInertia = [];
+      for (let i = 0; i < data.length; i++) {
+        let dist = Math.pow(data[i][0] - centroids[assignments[i]][0], 2) + Math.pow(data[i][1] - centroids[assignments[i]][1], 2);
+        inertia += dist;
+        pointInertia[i] = dist;
+      }
+      return {assignments, centroids, inertia, pointInertia};
+    }
+
+    // Elbow method
+    function elbowMethod() {
+      let inertias = [];
+      for (let k = 1; k <= 10; k++) {
+        let result = kMeans(points, k);
+        inertias.push(result.inertia);
+      }
+      Plotly.newPlot('elbow', [{
+        x: Array.from({length: 10}, (_, i) => i+1),
+        y: inertias,
+        type: 'scatter',
+        mode: 'lines+markers',
+        marker: {color: 'blue'}
+      }], {
+        title: 'Elbow Method: Inertia vs k',
+        xaxis: {title: 'Number of clusters (k)'},
+        yaxis: {title: 'Inertia'}
+      });
+    }
+
+    // Plot clusters
+    function runKMeans() {
+      const k = parseInt(document.getElementById('numClusters').value);
+      if (!points.length) generateData();
+      const result = kMeans(points, k);
+      let clusters = Array.from({length: k}, () => []);
+      for (let i = 0; i < points.length; i++) {
+        clusters[result.assignments[i]].push({
+          x: points[i][0],
+          y: points[i][1],
+          inertia: result.pointInertia[i],
+          cluster: result.assignments[i]
+        });
+      }
+      let traces = clusters.map((cluster, idx) => ({
+        x: cluster.map(p => p.x),
+        y: cluster.map(p => p.y),
+        text: cluster.map(p => `Inertia: ${p.inertia.toFixed(2)}<br>Cluster: ${p.cluster}`),
+        mode: 'markers',
+        type: 'scatter',
+        name: `Cluster ${idx}`,
+        marker: {size: 10}
+      }));
+      // Centroids
+      traces.push({
+        x: result.centroids.map(c => c[0]),
+        y: result.centroids.map(c => c[1]),
+        mode: 'markers',
+        type: 'scatter',
+        name: 'Centroids',
+        marker: {size: 16, color: 'black', symbol: 'x'},
+        text: result.centroids.map((c, i) => `Centroid ${i}`)
+      });
+      Plotly.newPlot('cluster', traces, {
+        title: `K-Means Clusters (k=${k})<br>Total Inertia: ${result.inertia.toFixed(2)}`,
+        hovermode: 'closest',
+        xaxis: {title: 'X'},
+        yaxis: {title: 'Y'}
+      });
+    }
+
+    // Initial run
+    generateData();
+  </script>
+</body>
+</html>
